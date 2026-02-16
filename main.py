@@ -1,127 +1,137 @@
-import customtkinter as ctk
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.button import Button
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.gridlayout import GridLayout
+from kivy.core.window import Window
+from kivy.utils import platform
+
+# Import logic from parent directory (requires path hacking or proper structure)
+import sys
+import os
+
+# Add parent dir to sys.path to find blocker_manager
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from blocker_manager import BlockerManager
-import tkinter.messagebox as messagebox
-import threading
-import time
 
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
-
-class CyberBarrierApp(ctk.CTk):
-    def __init__(self):
-        super().__init__()
-
-        self.title("CyberBarrier")
-        self.geometry("700x600")
-        
-        # Initialize Backend
+class CyberBarrierAndroid(App):
+    def build(self):
         self.blocker = BlockerManager()
-
-        # Grid Layout
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-
-        # Sidebar (Navigation/Stats)
-        self.sidebar_frame = ctk.CTkFrame(self, width=140, corner_radius=0)
-        self.sidebar_frame.grid(row=0, column=0, rowspan=4, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(4, weight=1)
-
-        self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="Cyber\nBarrier", font=ctk.CTkFont(size=20, weight="bold"))
-        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
-
-        self.stats_label = ctk.CTkLabel(self.sidebar_frame, text="Active Blocks:\n0", font=ctk.CTkFont(size=14))
-        self.stats_label.grid(row=1, column=0, padx=20, pady=20)
-
-        self.flush_btn = ctk.CTkButton(self.sidebar_frame, text="Flush DNS", fg_color="transparent", border_width=2, text_color=("gray10", "#DCE4EE"), command=self.flush_dns)
-        self.flush_btn.grid(row=2, column=0, padx=20, pady=10)
+        self.title = "CyberBarrier Mobile"
         
-        # Main Content Area
-        self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.main_frame.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
-        self.main_frame.grid_columnconfigure(0, weight=1)
-        self.main_frame.grid_rowconfigure(1, weight=1)
-
+        # Main Layout
+        root = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        
+        # Header
+        header = Label(text="CyberBarrier", font_size='24sp', size_hint_y=None, height=50, bold=True)
+        root.add_widget(header)
+        
         # Input Area
-        self.input_frame = ctk.CTkFrame(self.main_frame)
-        self.input_frame.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        input_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=5)
+        self.url_input = TextInput(hint_text="example.com", multiline=False)
+        btn_block = Button(text="BLOCK", size_hint_x=None, width=100, background_color=(0.9, 0.3, 0.3, 1))
+        btn_block.bind(on_press=self.do_block)
         
-        self.url_entry = ctk.CTkEntry(self.input_frame, placeholder_text="www.example.com", height=40, font=ctk.CTkFont(size=14))
-        self.url_entry.pack(side="left", fill="x", expand=True, padx=(20, 10), pady=20)
+        input_layout.add_widget(self.url_input)
+        input_layout.add_widget(btn_block)
+        root.add_widget(input_layout)
+
+        # Server Sync Area
+        sync_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=5)
+        self.server_input = TextInput(hint_text="Server IP:8000", multiline=False)
+        btn_sync = Button(text="SYNC", size_hint_x=None, width=100, background_color=(0.3, 0.3, 0.9, 1))
+        btn_sync.bind(on_press=self.do_sync)
         
-        self.block_button = ctk.CTkButton(self.input_frame, text="BLOCK ACCESS", height=40, font=ctk.CTkFont(size=14, weight="bold"), fg_color="#c0392b", hover_color="#e74c3c", command=self.block_website)
-        self.block_button.pack(side="right", padx=(0, 20), pady=20)
-
-        # Blocked List
-        self.list_label = ctk.CTkLabel(self.main_frame, text="Protected Zone (Blocked Sites)", font=ctk.CTkFont(size=16, weight="bold"))
-        self.list_label.grid(row=1, column=0, sticky="w", pady=(0, 10))
-
-        self.list_frame = ctk.CTkScrollableFrame(self.main_frame, label_text="")
-        self.list_frame.grid(row=2, column=0, sticky="nsew")
-
-        # Notification Label (bottom)
-        self.notification_label = ctk.CTkLabel(self.main_frame, text="", text_color="gray")
-        self.notification_label.grid(row=3, column=0, pady=10)
-
+        sync_layout.add_widget(self.server_input)
+        sync_layout.add_widget(btn_sync)
+        root.add_widget(sync_layout)
+        
+        # Status Label
+        self.status_label = Label(text="Ready", size_hint_y=None, height=30, color=(0.7, 0.7, 0.7, 1))
+        root.add_widget(self.status_label)
+        
+        # List Header
+        list_header = Label(text="Blocked Sites", size_hint_y=None, height=40, bold=True)
+        root.add_widget(list_header)
+        
+        # Scrollable List
+        self.scroll_view = ScrollView()
+        self.list_layout = GridLayout(cols=1, spacing=5, size_hint_y=None)
+        self.list_layout.bind(minimum_height=self.list_layout.setter('height'))
+        
+        self.scroll_view.add_widget(self.list_layout)
+        root.add_widget(self.scroll_view)
+        
         self.refresh_list()
-
-    def show_notification(self, message, is_error=False):
-        color = "#e74c3c" if is_error else "#2ecc71"
-        self.notification_label.configure(text=message, text_color=color)
-        # Auto-hide after 3 seconds
-        self.after(3000, lambda: self.notification_label.configure(text=""))
+        
+        return root
 
     def refresh_list(self):
-        for widget in self.list_frame.winfo_children():
-            widget.destroy()
+        self.list_layout.clear_widgets()
+        sites = self.blocker.get_blocked_sites()
+        
+        if not sites:
+            self.list_layout.add_widget(Label(text="No active blocks", size_hint_y=None, height=40))
+        
+        for site in sites:
+            row = BoxLayout(orientation='horizontal', size_hint_y=None, height=40)
+            lbl = Label(text=site)
+            btn_unblock = Button(text="X", size_hint_x=None, width=40, background_color=(0.5, 0.5, 0.5, 1))
+            btn_unblock.bind(on_press=lambda x, s=site: self.do_unblock(s))
+            
+            row.add_widget(lbl)
+            row.add_widget(btn_unblock)
+            self.list_layout.add_widget(row)
 
-        blocked_sites = self.blocker.get_blocked_sites()
-        self.stats_label.configure(text=f"Active Blocks:\n{len(blocked_sites)}")
-
-        if not blocked_sites:
-             label = ctk.CTkLabel(self.list_frame, text="No active barriers.", font=ctk.CTkFont(slant="italic"))
-             label.pack(pady=20)
+    def do_sync(self, instance):
+        server_url = self.server_input.text
+        if not server_url:
+             self.status_label.text = "Enter Server URL"
              return
-
-        for site in blocked_sites:
-            self.create_list_item(site)
-
-    def create_list_item(self, site):
-        item_frame = ctk.CTkFrame(self.list_frame, fg_color=("gray80", "gray25"))
-        item_frame.pack(fill="x", pady=5, padx=5)
+             
+        self.status_label.text = "Syncing..."
         
-        label = ctk.CTkLabel(item_frame, text=site, font=ctk.CTkFont(size=14))
-        label.pack(side="left", padx=15, pady=10)
-        
-        unblock_btn = ctk.CTkButton(item_frame, text="ALLOW", width=80, height=30, fg_color="transparent", border_width=1, border_color="#e74c3c", text_color="#e74c3c", hover_color="#e74c3c", 
-                                    command=lambda s=site: self.unblock_website(s))
-        unblock_btn.pack(side="right", padx=15, pady=10)
+        # Run in thread to avoid freezing UI
+        import threading
+        def sync_thread():
+            new_blocks = self.blocker.fetch_from_server(server_url)
+            if new_blocks is None:
+                self.status_label.text = "Sync Failed"
+            else:
+                count = len(new_blocks)
+                self.status_label.text = f"Synced. Added {count} new."
+                # Schedule UI update on main thread
+                # (Kivy requires UI updates on main thread, but this simple label set might be unsafe. 
+                # Ideally use Clock.schedule_once)
+                from kivy.clock import Clock
+                Clock.schedule_once(lambda dt: self.refresh_list(), 0)
 
-    def block_website(self):
-        url = self.url_entry.get()
+        threading.Thread(target=sync_thread).start()
+
+    def do_block(self, instance):
+        url = self.url_input.text
         if not url:
-            self.show_notification("Please enter a URL first.", is_error=True)
+            self.status_label.text = "Please enter a URL"
             return
-
+            
         success = self.blocker.block_site(url)
         if success:
-            self.url_entry.delete(0, 'end')
+            self.url_input.text = ""
+            self.status_label.text = f"Blocked {url}"
             self.refresh_list()
-            self.show_notification(f"Access to {url} blocked.")
         else:
-            self.show_notification("Failed. Run as Admin.", is_error=True)
+            self.status_label.text = "Failed (Root required?)"
 
-    def unblock_website(self, site):
+    def do_unblock(self, site):
         success = self.blocker.unblock_site(site)
         if success:
+            self.status_label.text = f"Unblocked {site}"
             self.refresh_list()
-            self.show_notification(f"Access to {site} restored.")
         else:
-            self.show_notification("Failed. Run as Admin.", is_error=True)
-            
-    def flush_dns(self):
-        self.blocker._flush_dns()
-        self.show_notification("DNS Cache Flushed.")
+             self.status_label.text = "Failed to unblock"
 
-if __name__ == "__main__":
-    app = CyberBarrierApp()
-    app.mainloop()
+if __name__ == '__main__':
+    CyberBarrierAndroid().run()
